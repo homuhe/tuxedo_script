@@ -15,6 +15,7 @@ set errtrace
 lsb_dist_id="$(lsb_release -si)"   # e.g. 'Ubuntu', 'LinuxMint', 'openSUSE project'
 lsb_release="$(lsb_release -sr)"   # e.g. '13.04', '15', '12.3'
 lsb_codename="$(lsb_release -sc)"  # e.g. 'raring', 'olivia', 'Dartmouth'
+product="$(sed -e 's/^\s*//g' -e 's/\s*$//g' "/sys/devices/virtual/dmi/id/product_name" | tr ' ,/-' '_')" # e.g. 'U931'
 
 cd $(dirname $0)
 
@@ -80,7 +81,6 @@ has_threeg() {
 	lsusb -d 12d1:1404
 }
 
-
 add_apt_repository() {
 		add-apt-repository -y $1
 }
@@ -100,10 +100,12 @@ pkg_is_installed() {
 
 task_grub() {
 	case "$lsb_dist_id" in
-		Ubuntu|LinuxMint)
+		Ubuntu|LinuxMint|elementary*)
 			local default_grub=/etc/default/grub
+			if [ ! $product == "U931" ]; then
 			if ! grep -q 'acpi_os_name=Linux acpi_osi= acpi_backlight=vendor' "$default_grub"; then
 			sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_os_name=Linux acpi_osi= acpi_backlight=vendor"/' $default_grub
+			fi
 			fi
 			if has_nvidia_gpu; then
 				sed -i '/^GRUB_CMDLINE_LINUX=/ s/nomodeset//' $default_grub
@@ -277,7 +279,9 @@ task_tuxedo_wmi() {
 
 	case "$lsb_dist_id" in
 		Ubuntu|LinuxMint|elementary*)
+			if [ ! $product == "U931" ]; then
 			$install_cmd tuxedo-wmi-dkms
+			fi
 			;;
 		openSUSE*)
 			$install_cmd tuxedo-wmi
