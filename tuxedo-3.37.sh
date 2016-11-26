@@ -1,11 +1,12 @@
 #!/bin/bash
 #
-# Author: Tuxedo Computers GmbH <tux@tuxedocomputers.com>
+# Author: TUXEDO Computers GmbH <tux@tuxedocomputers.com>
+# Version: 3.41
 
 APT_CACHE_HOSTS="192.168.178.107 192.168.23.231"
 APT_CACHE_PORT=3142
 # additional packages that should be installed
-PACKAGES="cheese pavucontrol gparted pidgin vim"
+PACKAGES="cheese pavucontrol brasero gparted pidgin vim mesa-utils obexftp ethtool xautomation exfat-fuse exfat-utils curl indicator-keylock libgtkglext1 unsettings gstreamer1.0-libav"
 
 
 error=0
@@ -16,6 +17,20 @@ lsb_dist_id="$(lsb_release -si)"   # e.g. 'Ubuntu', 'LinuxMint', 'openSUSE proje
 lsb_release="$(lsb_release -sr)"   # e.g. '13.04', '15', '12.3'
 lsb_codename="$(lsb_release -sc)"  # e.g. 'raring', 'olivia', 'Dartmouth'
 product="$(sed -e 's/^\s*//g' -e 's/\s*$//g' "/sys/devices/virtual/dmi/id/product_name" | tr ' ,/-' '_')" # e.g. 'U931'
+case $product in
+U931) product="U931" && grubakt="NOGRUB";;
+U953) product="U931" && grubakt="NOGRUB";;
+INFINITYBOOK13V2) product="U931" && grubakt="NOGRUB";;
+InfinityBook13V3) product="U931" && grubakt="NOGRUB";;
+InfinityBook15) product="U931" && grubakt="NOGRUB";;
+Skylake_Platform) product="U931" && grubakt="NOGRUB";;
+P65_67RS*) grubakt="02GRUB";;
+P65_67RP*) grubakt="02GRUB";;
+P65xRP) grubakt="02GRUB";;
+P67xRP) grubakt="02GRUB";;
+P7xxDM*) grubakt="NOGRUB";;
+*) echo "nichts" >/dev/null;;
+esac
 
 cd $(dirname $0)
 
@@ -69,6 +84,10 @@ has_skylake_cpu() {
 	lspci -nd 8086: | grep -q '19[01][048cf]'
 }
 
+has_kabylake_cpu() {
+         [ "$(cat /proc/cpuinfo | grep -i "model name" | awk -F"-" '{print $2}' | head -1 | cut -c1)" = "7" ]
+}
+
 has_fingerprint_reader() {
 	[ -x "$(which lsusb)" ] || $install_cmd usbutils
 	# 0483 ... UPEK
@@ -97,26 +116,37 @@ pkg_is_installed() {
 	esac
 }
 
-
 task_grub() {
 	case "$lsb_dist_id" in
 		Ubuntu|LinuxMint|elementary*)
 			local default_grub=/etc/default/grub
-			if [ ! $product == "U931" ]; then
-			if ! grep -q 'acpi_os_name=Linux acpi_osi= acpi_backlight=vendor' "$default_grub"; then
-			sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_os_name=Linux acpi_osi= acpi_backlight=vendor"/' $default_grub
-			fi
-			fi
-			if has_nvidia_gpu; then
-				sed -i '/^GRUB_CMDLINE_LINUX=/ s/nomodeset//' $default_grub
-			fi
-			update-grub
-			;;
+	    if [ ! $grubakt == "NOGRUB" ]; then
+            if [ $grubakt == "01GRUB" ]; then
+            if ! grep -q 'acpi_osi=Linux acpi_backlight=vendor' "$default_grub"; then
+            sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_osi=Linux acpi_backlight=vendor"/' $default_grub
+            fi
+            elif [ $grubakt == "02GRUB" ]; then
+            if ! grep -q 'acpi_os_name=Linux acpi_osi= acpi_backlight=vendor i8042.reset i8042.nomux i8042.nopnp i8042.noloop' "$default_grub"; then
+            sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_os_name=Linux acpi_osi= acpi_backlight=vendor i8042.reset i8042.nomux i8042.nopnp i8042.noloop"/' $default_grub
+            fi
+            else
+            if ! grep -q 'acpi_os_name=Linux acpi_osi= acpi_backlight=vendor' "$default_grub"; then
+            sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_os_name=Linux acpi_osi= acpi_backlight=vendor"/' $default_grub
+            fi
+            fi
+            fi
+            if has_nvidia_gpu; then
+                sed -i '/^GRUB_CMDLINE_LINUX=/ s/nomodeset//' $default_grub
+            fi
+            update-grub
+            ;;
 		openSUSE*|SUSE*)
 			local default_grub=/etc/default/grub
+			if [ ! $product == "U931" ]; then
                         if ! grep -q 'acpi_os_name=Linux acpi_osi= acpi_backlight=vendor' "$default_grub"; then
                         sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ s/"\(.*\)"/"\1 acpi_os_name=Linux acpi_osi= acpi_backlight=vendor"/' $default_grub
                         fi
+			fi
 			grub2-mkconfig -o /boot/grub2/grub.cfg
 			;;
 	esac
@@ -165,6 +195,10 @@ task_nvidia() {
 			        sed -i -e '/^XorgModulePath=/ s/nvidia-current/nvidia-349/' "/etc/bumblebee/bumblebee.conf"
 			elif [ $lsb_release == "15.10" ]; then
 				$install_cmd nvidia-352 mesa-utils
+			elif [ $lsb_release == "16.04" ]; then
+                                $install_cmd nvidia-370 mesa-utils nvidia-prime
+            elif [ $lsb_release == "16.10" ]; then
+                                $install_cmd nvidia-370 mesa-utils nvidia-prime                    
 			elif [ $lsb_release == "17.2" ]; then
                                 if ! has_skylake_cpu; then
                                 $install_cmd bumblebee bumblebee-nvidia nvidia-349 primus mesa-utils
@@ -210,7 +244,7 @@ task_nvidia() {
 			esac
 			;;
 		SUSE*)
-			echo "nichts" >/dev/null
+			$install_cmd libX11-6-32bit libXau6-32bit libXext6-32bit libxcb1-32bit mesa-demo-x nvidia-computeG04 nvidia-gfxG04-kmp-default nvidia-glG04 x11-video-nvidiaG04
 			;;
 	esac
 }
@@ -228,7 +262,7 @@ task_nvidia_test() {
                                 true
                                 fi
 			else
-			pkg_is_installed nvidia-349 || pkg_is_installed nvidia-352
+			pkg_is_installed nvidia-349 || pkg_is_installed nvidia-352 || pkg_is_installed nvidia-370
 			#if [ $lsb_release == "15.04" ]; then
                         #pkg_is_installed nvidia-349
 			#elif [ $lsb_release == "15.10" ]; then
@@ -514,13 +548,25 @@ deb http://intel.tuxedocomputers.com/ubuntu $ubuntu_release main
                         fi
                         ;;
 		Ubuntu)
-			if ! [ -f /etc/apt/sources.list.d/tuxedo-computers.list ] ; then
-			cat <<-__EOF__ >"/etc/apt/sources.list.d/tuxedo-computers.list"
+			case "$lsb_codename" in
+				xenial)
+				if ! [ -f /etc/apt/sources.list.d/tuxedo-computers.list ] ; then
+				cat <<-__EOF__ >"/etc/apt/sources.list.d/tuxedo-computers.list"
+deb http://deb.tuxedocomputers.com/ubuntu $lsb_codename main
+deb http://graphics.tuxedocomputers.com/ubuntu $lsb_codename main
+				__EOF__
+				fi
+				;;
+				*)
+				if ! [ -f /etc/apt/sources.list.d/tuxedo-computers.list ] ; then
+				cat <<-__EOF__ >"/etc/apt/sources.list.d/tuxedo-computers.list"
 deb http://deb.tuxedocomputers.com/ubuntu $lsb_codename main
 deb http://intel.tuxedocomputers.com/ubuntu $lsb_codename main
 deb http://graphics.tuxedocomputers.com/ubuntu $lsb_codename main
-			__EOF__
+				__EOF__
 			fi
+			;;
+			esac
 			;;
 		openSUSE*)
 			cat <<-__EOF__ >"/etc/zypp/repos.d/repo-tuxedo-computers.repo"
@@ -680,6 +726,53 @@ gpgcheck=1
 enabled=1
 autorefresh=1
 				__EOF__
+
+                       if has_nvidia_gpu; then
+			[ "$lsb_release" = "42.1" ] && cat <<-__EOF__ >"/etc/zypp/repos.d/nVidia_Graphics_Drivers.repo"
+[nVidia_Graphics_Drivers]
+name=nVidia Graphics Drivers
+type=rpm-md
+baseurl=http://download.nvidia.com/opensuse/leap/42.1/
+gpgcheck=1
+gpgkey=http://download.nvidia.com/opensuse/leap/42.1/repodata/repomd.xml.key
+enabled=1
+autorefresh=1
+				__EOF__
+				local tmp="$(mktemp)"
+				cat <<-__EOF__ >"$tmp"
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v2
+
+mQGiBESRhx4RBACrG2Ig6yQoBwkZtxgcF2zAI/d22u0IN2DVUc35KkGKBN6qe1nY
+RluKPzbUcOzvxdxmvXvUZmfS3Vdv69g04iR2eHr7CXDyltw3r8jLeowGZdvqBHrf
+Ee2iFBnHxvFRQtPtaVbeZhTSXmgUAjMm74wtonr0IKoV0X/kKUAtAvsF7wCgybyT
+wgsuFMhtp8tuNo8gZ67SX+UD/3OBVtBPjyXqZ3FKb3yyAAlcDR/RKvZzNCSse/E3
+E/vfrvhBzYL9flqw66iIvouFbXJxo1tUqRTfD9PVBPJeSqaWp99GGtWkAtgNvLCH
+6rrAHvkvTvVlqMHQFHziDkcBqRWFN0Jo3XeO800jlxFiCC8/JBxV+/CBhbtQKnnM
+Jg66A/9EQPAlVk8pPtaSU6WKi5Xhf4nZimR1Cy3wFIFCKJa2H/xQADY58mENS9sm
+rKfOP9NJ4F998FVuZoOPeBatuwukW47rejI2AEv5QBpbJOdXqHRrTEdK/kjgC+3/
+I17yWUv8JbMnOKi/Fdb8IEcfhsiieOPyrndGkhx77VwxX5fDerQqTlZJRElBIENv
+cnBvcmF0aW9uIDxsaW51eC1idWdzQG52aWRpYS5jb20+iGAEExECACAFAkSRhx4C
+GwMGCwkIBwMCBBUCCAMEFgIDAQIeAQIXgAAKCRD1ETJDxmturq9CAJ9nPv6Cp3QC
+ub4SJsIbTnPIy2dQNwCfaLow8ubVATa3jDOOkutysSHee4K5Ag0ERJGHKhAIAMoe
+mxnUAvCIIk3ywzIMc/ePuTQsjM5ojvK0vro44NHGjZEA+5pum2Ns9oYdyTCi07Ua
+oCMcbzL3r0m9XKw6brHEziu7rMM3Z++Dc+Ngagv5wGhZtLLd+QcDPCum0t3Wgh3x
+wFEvSOkDvl8p2Z7dW6v83LK7v8vvDuV3EV1TD1xa/9v5M/GPgFrPKrPTdP31Uoj0
+2SeL9rlf41nqh7VRqk45yvz+IrdnVrLpuHvJkpmjXtCr6DrFhVyj1Da5Y7M7QqY4
+gR5SHy42e7jE9mu+cpJ6IiiubJOZuQ/hulLHcP22GArIbFCMv40CNmY2MYqvFeqD
+3w+wqVvt1miHF8xCxzMAAwYH/3DJHWuncuhK3XT7mHHsZgGbgpOOTECknMfzwUT4
+5/uyHHqrbq3Nrufpr9BBgXH5yzNS9/J24VfcSj808ZUmstM+QMvpgZFwePOAGqoJ
+JaSozgIm7TSnvjmK8IyOvd4Sd9vFEmFz9EkqGD/000oO5xwMphZurRzP9qqYvuPj
+dxfcGlRIlYHYbNx+7HEWOqdOmsgPAClgwa3JYJeKViZ8+pAtycj22DD0m3iBOPSP
+IXMf8zEghNzyH60zp9pZR/np0A2oJJzd7QFHrsWdXvt3mL7jSRbYXefWQFoPdDX/
++g4yiD+cKPP6YNU5t1qZhbh9OjHuoFCc74CUPshjeDpm5TqISQQYEQIACQUCRJGH
+KgIbDAAKCRD1ETJDxmturof/AJ0UbqfmPaD44iRchNgI74dVl/VBbgCgkxDG2hzd
+pXJFhTejxk9LOMnVLCA=
+=+kvB
+-----END PGP PUBLIC KEY BLOCK-----
+				__EOF__
+				rpmkeys --import "$tmp" && rm "$tmp"
+			fi                                
                         ;;
                 esac
 
@@ -720,6 +813,62 @@ eJI8pD1FfSZ8Qx2EEFsIDp4rKAj8wWOXpts1K8Jlk3AMAZbjvwOe62j+xMhKUCTZ
 P54AVNZHIfcFmkkTtKlc2Tkg4b9O3oII7iz3PV0E76wdgVt4nvL/MpRkJVnShG+Y
 3sAteW2HIF2OgNxmZppIY60OszOnX21d
 =+Wgc
+-----END PGP PUBLIC KEY BLOCK-----
+			__EOF__
+                        # sub   2048R/7B189DC4 2014-11-24
+			cat <<-__EOF__ | apt-key add -
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: GnuPG v1
+Comment: deb.tuxedocomputers.com 4096R/54840598 4096R/A5842AD4
+
+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
+=5MIM
 -----END PGP PUBLIC KEY BLOCK-----
 			__EOF__
 			;;
@@ -785,6 +934,7 @@ task_install_kernel() {
 				precise|maya) $install_cmd linux-generic-lts-raring ;;
 				qiana) $install_cmd linux-generic-lts-vivid ;;
 				trusty|rafaela|rosa) $install_cmd linux-generic-lts-wily ;;
+				xenial) $install_cmd linux-headers-4.8.6-040806 linux-headers-4.8.6-040806-generic linux-image-4.8.6-040806-generic;;
 				*) $install_cmd linux-generic ;;
 			esac
 			;;
@@ -801,6 +951,12 @@ task_install_kernel() {
 				*) echo "nichts" >/dev/null;;
 			esac
 			;;
+		SUSE*)
+			case "$lsb_release" in
+				42.1) $install_cmd -f kernel-default-4.4.0-8.1.x86_64 kernel-default-devel-4.4.0-8.1.x86_64 kernel-firmware;;
+				*) echo "nichts" >/dev/null;;
+                        esac
+			;;
 	esac
 }
 task_install_kernel_test() {
@@ -810,6 +966,7 @@ task_install_kernel_test() {
                                 precise|maya) pkg_is_installed linux-generic-lts-raring || return 1 ;;
                                 qiana) pkg_is_installed linux-generic-lts-vivid || return 1 ;;
 				trusty|rafaela|rosa) pkg_is_installed linux-generic-lts-wily || return 1;;
+				xenial) pkg_is_installed linux-image-4.8.6-040806-generic;;
                                 *) pkg_is_installed linux-generic || return 1 ;;
                         esac
 			;;
@@ -821,6 +978,9 @@ task_install_kernel_test() {
                         ;;
 		openSUSE*)
 			pkg_is_installed kernel-desktop || return 1
+			;;
+                SUSE*)
+                        pkg_is_installed kernel-default || return 1
 			;;
 	esac
 
@@ -851,17 +1011,49 @@ task_software() {
                         sed -i "s#\(^AUTOSUSPEND_RUNTIME_DEVTYPE_BLACKLIST=\).*#\1usbhid#" /etc/laptop-mode/conf.d/runtime-pm.conf
                         fi
 			apt-get -y remove unity-webapps-common app-install-data-partner
-			wget https://www.tuxedocomputers.com/support/iwlwifi-4.2.tar.gz
-			tar xvzf iwlwifi-4.2.tar.gz
-			cd iwlwifi-4.2
-			cp iwlwifi*.ucode /lib/firmware
-			cd ..
-			rm -rf iwlwifi-4.2*
-			if [ -e "/sys/class/backlight/intel_backlight/max_brightness"]; then
+			wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-3160-17.ucode
+			wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-7260-17.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-7265-17.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-7265D-21.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-8000C-19.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-8000C-20.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-8000C-21.ucode
+            wget http://www.tuxedocomputers.com/support/iwlwifi/iwlwifi-8000C-22.ucode
+            cp iwlwifi*.ucode /lib/firmware/
+            rm -rf iwlwifi-*
+            wget http://www.tuxedocomputers.com/support/i915/kbl_dmc_ver1_01.bin
+            wget http://www.tuxedocomputers.com/support/i915/skl_dmc_ver1_26.bin
+            wget http://www.tuxedocomputers.com/support/i915/skl_guc_ver6_1.bin
+            mkdir /lib/firmware/i915
+            cp kbl*.bin /lib/firmware/i915/
+            cp skl*.bin /lib/firmware/i915
+            ln -sf /lib/firmware/i915/kbl_dmc_ver1_01.bin /lib/firmware/i915/kbl_dmc_ver1.bin
+            ln -sf /lib/firmware/i915/skl_dmc_ver1_26.bin /lib/firmware/i915/skl_dmc_ver1.bin
+            ln -sf /lib/firmware/i915/skl_guc_ver6_1.bin /lib/firmware/i915/skl_guc_ver6.bin
+            rm -rf kbl*.bin
+            rm -rf skl*.bin
+            if pkg_is_installed lightdm; then
+            if [ $lsb_release == "16.04" ]; then
+                        wget http://www.tuxedocomputers.com/support/dpms-disable
+                        sh dpms-disable && rm dpms-disable
+                        fi
+            if [ $lsb_release == "16.10" ]; then
+                        wget http://www.tuxedocomputers.com/support/dpms-disable
+                        sh dpms-disable && rm dpms-disable
+                        fi
+            fi           
+			if [ -e "/sys/class/backlight/intel_backlight/max_brightness" ]; then
 			cat /sys/class/backlight/intel_backlight/max_brightness > /sys/class/backlight/intel_backlight/brightness
+			fi
+			if pkg_is_installed ubuntu-desktop; then
+			$install_cmd classicmenu-indicator
 			fi
 			;;
 		SUSE*)
+			if [ $product == "P65_P67RGRERA" ]; then
+			$install_cmd r8168-dkms-8.040.00-10.57.noarch
+			echo "blacklist r8169" > "/etc/modprobe.d/99-local.conf"
+			fi
 			$install_cmd  exfat-utils fuse-exfat
 			;;
 	esac
